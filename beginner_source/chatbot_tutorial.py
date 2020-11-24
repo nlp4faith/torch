@@ -1207,7 +1207,7 @@ def evaluate(encoder, decoder, searcher, voc, sentence, max_length=MAX_LENGTH):
     input_batch = torch.LongTensor(indexes_batch).transpose(0, 1)
     # Use appropriate device
     input_batch = input_batch.to(device)
-    lengths = lengths.to(device)
+    lengths = lengths.to('cpu') #lengths.to(device)
     # Decode sentence with searcher
     tokens, scores = searcher(input_batch, lengths, max_length)
     # indexes -> words
@@ -1261,7 +1261,7 @@ dropout = 0.1
 batch_size = 64
 
 # Set checkpoint to load from; set to None if starting from scratch
-loadFilename = None
+loadFilename = 'data/save/cb_model/cornell movie-dialogs corpus/2-2_500/4000_checkpoint.tar' #None
 checkpoint_iter = 4000
 #loadFilename = os.path.join(save_dir, model_name, corpus_name,
 #                            '{}-{}_{}'.format(encoder_n_layers, decoder_n_layers, hidden_size),
@@ -1309,44 +1309,45 @@ print('Models built and ready to go!')
 # finally we call the ``trainIters`` function to run our training
 # iterations.
 #
+is_train = False
+if is_train:
+    # Configure training/optimization
+    clip = 50.0
+    teacher_forcing_ratio = 1.0
+    learning_rate = 0.0001
+    decoder_learning_ratio = 5.0
+    n_iteration = 4000
+    print_every = 1
+    save_every = 500
 
-# Configure training/optimization
-clip = 50.0
-teacher_forcing_ratio = 1.0
-learning_rate = 0.0001
-decoder_learning_ratio = 5.0
-n_iteration = 4000
-print_every = 1
-save_every = 500
+    # Ensure dropout layers are in train mode
+    encoder.train()
+    decoder.train()
 
-# Ensure dropout layers are in train mode
-encoder.train()
-decoder.train()
+    # Initialize optimizers
+    print('Building optimizers ...')
+    encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
+    decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate * decoder_learning_ratio)
+    if loadFilename:
+        encoder_optimizer.load_state_dict(encoder_optimizer_sd)
+        decoder_optimizer.load_state_dict(decoder_optimizer_sd)
 
-# Initialize optimizers
-print('Building optimizers ...')
-encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
-decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate * decoder_learning_ratio)
-if loadFilename:
-    encoder_optimizer.load_state_dict(encoder_optimizer_sd)
-    decoder_optimizer.load_state_dict(decoder_optimizer_sd)
+    # If you have cuda, configure cuda to call
+    for state in encoder_optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.cuda()
 
-# If you have cuda, configure cuda to call
-for state in encoder_optimizer.state.values():
-    for k, v in state.items():
-        if isinstance(v, torch.Tensor):
-            state[k] = v.cuda()
-
-for state in decoder_optimizer.state.values():
-    for k, v in state.items():
-        if isinstance(v, torch.Tensor):
-            state[k] = v.cuda()
-    
-# Run training iterations
-print("Starting Training!")
-trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer,
-           embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size,
-           print_every, save_every, clip, corpus_name, loadFilename)
+    for state in decoder_optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                state[k] = v.cuda()
+        
+    # Run training iterations
+    print("Starting Training!")
+    trainIters(model_name, voc, pairs, encoder, decoder, encoder_optimizer, decoder_optimizer,
+            embedding, encoder_n_layers, decoder_n_layers, save_dir, n_iteration, batch_size,
+            print_every, save_every, clip, corpus_name, loadFilename)
 
 
 ######################################################################
@@ -1364,7 +1365,7 @@ decoder.eval()
 searcher = GreedySearchDecoder(encoder, decoder)
 
 # Begin chatting (uncomment and run the following line to begin)
-# evaluateInput(encoder, decoder, searcher, voc)
+evaluateInput(encoder, decoder, searcher, voc)
 
 
 ######################################################################
