@@ -33,6 +33,24 @@ tokenizer = BertTokenizer.from_pretrained(pretrained)
 # tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
 
 def evaluate(inputtext):
+    encoding = tokenizer(inputtext, return_tensors='pt', padding=True, return_length=True)
+
+    # print(input_ids, att_mask)
+    with torch.no_grad():
+        input_ids = encoding['input_ids'].to(device)
+        # input_len = encoding['length'].to(self.device)
+        mask = encoding['attention_mask'].to(device)
+        outputs = bert(input_ids, attention_mask=mask)
+        ret = outputs[0]
+        
+        cpu_ret = ret.cpu().detach().numpy()
+        cpu_mask = mask.cpu().detach().numpy()
+        ret = np.dot(cpu_mask, cpu_ret.squeeze(0))
+        # ret = torch.sum(ret, 1)
+        return torch.tensor(ret)
+
+
+def evaluate_bak(inputtext):
     input_ids = tokenizer.encode(inputtext, add_special_tokens=True)
     input_ids = pad_sequences([input_ids], maxlen=128, dtype="long",
                               value=0, truncating="post", padding="post")
@@ -77,23 +95,21 @@ def evaluate_old(inputtext):
 
 def test1():
     # s1 = evaluate('今天吃饭了吗')
-    question_ts = evaluate('时代香海彼岸的学区房')
-    templates = ['请问一下二中的学区房是什么', '请问一下一中的学区房是什么', '请问一下斗门中学的学区房是什么', '斗门时代香海的学区房', '斗中学区房', '时代彼岸的学区房', '时代比岸的学区房']
-    templates_ts = []
-    for t in templates:
-        templates_ts.append(evaluate(t))
-        # s2 = evaluate(t)
-        # ret = torch.nn.functional.cosine_similarity(question_ts, s2, dim=1, eps=1e-8)    
-        # print(t, ret)
-    s2 = torch.vstack(templates_ts)
-    ret = torch.nn.functional.cosine_similarity(question_ts, s2, dim=1, eps=1e-8)    
-    print(ret)
-    # question = "玲珑密保锁如何冻结账号"
-    # question_ts = evaluate(question)
-    # templates = ["玲珑锁冻结账号解绑了密保锁","玲珑锁如何冻结账号","玲珑锁账号该怎么冻结"]
-    # for template in templates:
-    #     ret = torch.nn.functional.cosine_similarity(question_ts, evaluate(template), dim=1, eps=1e-8)    
-    #     print(template, ret)
+    # question_ts = evaluate('时代香海彼岸的学区房')
+    # templates = ['请问一下二中的学区房是什么', '请问一下一中的学区房是什么', '请问一下斗门中学的学区房是什么', '斗门时代香海的学区房', '斗中学区房', '时代彼岸的学区房', '时代比岸的学区房']
+    # templates_ts = []
+    # for t in templates:
+    #     templates_ts.append(evaluate(t))
+ 
+    # s2 = torch.vstack(templates_ts)
+    # ret = torch.nn.functional.cosine_similarity(question_ts, s2, dim=1, eps=1e-8)    
+    # print(ret)
+    question = "玲珑密保锁如何冻结账号"
+    question_ts = evaluate(question)
+    templates = ["玲珑锁冻结账号解绑了密保锁","玲珑锁如何冻结账号","玲珑锁账号该怎么冻结"]
+    for template in templates:
+        ret = torch.nn.functional.cosine_similarity(question_ts, evaluate(template), dim=1, eps=1e-8)    
+        print(template, ret)
 
 if __name__ == "__main__":
     test1()
