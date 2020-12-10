@@ -1,7 +1,8 @@
 import torch
 from transformers import *
-from keras.preprocessing.sequence import pad_sequences
+# from keras.preprocessing.sequence import pad_sequences
 import numpy as np
+import threading, time, random
 # from torch_chatbot import MyDataLoader, tokenizer
 
 # if __name__ == "__main__":
@@ -11,13 +12,16 @@ import numpy as np
 #     print(ret)
 
 USE_CUDA = torch.cuda.is_available()
-device = torch.device("cuda" if USE_CUDA else "cpu")
-
+device = torch.device("cuda:0" if USE_CUDA else "cpu")
+device = 'cpu'
 checkpoint = torch.load('albert-tiny-chinese-3.pth')
 
 pretrained = 'voidful/albert_chinese_tiny'
 bert = AlbertModel.from_pretrained(pretrained, num_labels=2, output_attentions=False,
         output_hidden_states=True)
+# bert = BertModel.from_pretrained('bert-base-cased', output_attentions=False,
+#         output_hidden_states=True)
+# print(bert)
 bert.to(device)
 bert.eval()
 
@@ -32,22 +36,43 @@ tokenizer = BertTokenizer.from_pretrained(pretrained)
 # masked_reduce_mean = lambda x, m: tf.reduce_sum(mul_mask(x, m), axis=1) / (
 # tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
 
+def evaluate_o(sentence):
+    encoding = tokenizer(sentence, return_tensors='pt', padding=True, return_length=True)  # , add_special_tokens=False)
+
+    input_ids = encoding['input_ids'].to(device)
+    input_len = encoding['length'].to(device)
+    input_len = input_len.type(torch.float64).unsqueeze(1)
+    attention_mask = encoding['attention_mask'].to(device)
+   
+    outputs = bert(input_ids, attention_mask=attention_mask)
+    attention_mask = attention_mask.eq(0)
+    result = outputs.last_hidden_state.masked_fill_(attention_mask.unsqueeze(-1), float(0))
+    return torch.div(torch.sum(result, dim=1), input_len).cpu()
+
 def evaluate(inputtext):
     encoding = tokenizer(inputtext, return_tensors='pt', padding=True, return_length=True)
 
-    # print(input_ids, att_mask)
     with torch.no_grad():
-        input_ids = encoding['input_ids'].to(device)
+        input_ids = encoding['input_ids']
         # input_len = encoding['length'].to(self.device)
-        mask = encoding['attention_mask'].to(device)
+        mask = encoding['attention_mask']
+        if device != 'cpu':
+            mask = mask.to(device)
+            input_ids = input_ids.to(device)
         outputs = bert(input_ids, attention_mask=mask)
-        ret = outputs[0]
-        
-        cpu_ret = ret.cpu().detach().numpy()
-        cpu_mask = mask.cpu().detach().numpy()
-        ret = np.dot(cpu_mask, cpu_ret.squeeze(0))
-        # ret = torch.sum(ret, 1)
-        return torch.tensor(ret)
+        ret = outputs[0] # outputs.last_hidden_state 等价
+        # print('outputs', outputs)
+        # print('---!!!!', ret)
+        # print('---', outputs.last_hidden_state)
+        if device != 'cpu':
+            cpu_ret = ret.cpu().detach().numpy()
+            cpu_mask = mask.cpu().detach().numpy()
+        else:
+            cpu_ret = ret
+            cpu_mask = mask
+        result = np.dot(cpu_mask, cpu_ret.squeeze(0))
+
+        return torch.tensor(result)
 
 
 def evaluate_bak(inputtext):
@@ -105,11 +130,12 @@ def test1():
     # ret = torch.nn.functional.cosine_similarity(question_ts, s2, dim=1, eps=1e-8)    
     # print(ret)
     question = "玲珑密保锁如何冻结账号"
+    question = '哈'
     question_ts = evaluate(question)
-    templates = ["玲珑锁冻结账号解绑了密保锁","玲珑锁如何冻结账号","玲珑锁账号该怎么冻结"]
-    for template in templates:
-        ret = torch.nn.functional.cosine_similarity(question_ts, evaluate(template), dim=1, eps=1e-8)    
-        print(template, ret)
+    # templates = ["玲珑锁冻结账号解绑了密保锁","玲珑锁如何冻结账号","玲珑锁账号该怎么冻结"]
+    # for template in templates:
+    #     ret = torch.nn.functional.cosine_similarity(question_ts, evaluate(template), dim=1, eps=1e-8)    
+    #     print(template, ret)
 
 if __name__ == "__main__":
     test1()
